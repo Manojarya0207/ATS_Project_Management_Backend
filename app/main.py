@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 import anyio.to_thread
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 from app.core import ratelimit
 from app.core.config import Settings
@@ -121,6 +122,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
         expose_headers=["X-Request-ID", "X-Correlation-ID", "X-Process-Time"],
     )
+
+    @app.get("/", include_in_schema=False)
+    async def root_redirect() -> RedirectResponse:
+        return RedirectResponse(url=f"{settings.api_v1_prefix}/docs")
 
     app.include_router(health_router)
     for router in (
