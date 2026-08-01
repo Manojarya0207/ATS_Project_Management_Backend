@@ -105,12 +105,14 @@ class Settings(BaseSettings):
         # Normalize database_url to use postgresql+asyncpg for PostgreSQL connections
         url = self.database_url
         if url.startswith("postgres://") or url.startswith("postgresql://"):
-            if not url.startswith("postgresql+asyncpg://") and not url.startswith("postgres+asyncpg://"):
+            if not url.startswith("postgresql+asyncpg://") and not url.startswith(
+                "postgres+asyncpg://"
+            ):
                 if url.startswith("postgres://"):
                     url = url.replace("postgres://", "postgresql+asyncpg://", 1)
                 else:
                     url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-            
+
             # asyncpg does not accept libpq's ``sslmode`` parameter — translate
             # it to asyncpg's ``ssl``. Do NOT force ssl=require otherwise:
             # asyncpg defaults to ssl=prefer, which negotiates TLS on external
