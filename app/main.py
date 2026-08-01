@@ -63,7 +63,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     if settings.run_migrations_on_startup:
         logger.info("Running database migrations")
-        await anyio.to_thread.run_sync(_run_alembic_upgrade)
+        try:
+            await anyio.to_thread.run_sync(_run_alembic_upgrade)
+        except Exception as e:
+            logger.error("Database migration failed: %s", e, exc_info=True)
+            raise
 
     engine, sessionmaker = build_engine(settings)
     app.state.engine = engine

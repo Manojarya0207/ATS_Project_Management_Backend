@@ -107,9 +107,16 @@ class Settings(BaseSettings):
         if url.startswith("postgres://") or url.startswith("postgresql://"):
             if not url.startswith("postgresql+asyncpg://") and not url.startswith("postgres+asyncpg://"):
                 if url.startswith("postgres://"):
-                    self.database_url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+                    url = url.replace("postgres://", "postgresql+asyncpg://", 1)
                 else:
-                    self.database_url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+                    url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            
+            # Auto-append ?ssl=require in production if not already present
+            if self.environment == Environment.production and "ssl=" not in url:
+                separator = "&" if "?" in url else "?"
+                url = f"{url}{separator}ssl=require"
+            
+            self.database_url = url
 
         if self.environment == Environment.production:
             if self.jwt_secret_key in _INSECURE_SECRETS or len(self.jwt_secret_key) < 32:
