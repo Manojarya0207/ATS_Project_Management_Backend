@@ -111,11 +111,14 @@ class Settings(BaseSettings):
                 else:
                     url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
             
-            # Auto-append ?ssl=require in production if not already present
-            if self.environment == Environment.production and "ssl=" not in url:
-                separator = "&" if "?" in url else "?"
-                url = f"{url}{separator}ssl=require"
-            
+            # asyncpg does not accept libpq's ``sslmode`` parameter — translate
+            # it to asyncpg's ``ssl``. Do NOT force ssl=require otherwise:
+            # asyncpg defaults to ssl=prefer, which negotiates TLS on external
+            # endpoints and falls back to plaintext on internal/private-network
+            # endpoints (e.g. Render's internal connection string, which does
+            # not speak TLS and closes the connection if SSL is forced).
+            url = url.replace("?sslmode=", "?ssl=").replace("&sslmode=", "&ssl=")
+
             self.database_url = url
 
         if self.environment == Environment.production:
