@@ -44,4 +44,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -fsS http://localhost:8000/health || exit 1
 
 # Migrations run in the application lifespan (RUN_MIGRATIONS_ON_STARTUP=true).
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "python scripts/seed_admin.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+
