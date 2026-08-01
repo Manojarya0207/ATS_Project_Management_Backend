@@ -1,19 +1,22 @@
+# Production-style compose: Postgres + API. Copy .env.example to .env and set
+# JWT_SECRET_KEY (and POSTGRES_PASSWORD) before running.
+# Development (bind mount + reload + SQLite-free Postgres): docker-compose.dev.yml
+
 services:
   db:
     image: postgres:16
     environment:
-      POSTGRES_DB: ats_pm
-      POSTGRES_USER: ats
-      POSTGRES_PASSWORD: ats_password
+      POSTGRES_DB: ${POSTGRES_DB:-ats_pm}
+      POSTGRES_USER: ${POSTGRES_USER:-ats}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ats_password}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ats -d ats_pm"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ats} -d ${POSTGRES_DB:-ats_pm}"]
       interval: 5s
       timeout: 5s
       retries: 10
-    ports:
-      - "5432:5432"
+    restart: unless-stopped
 
   api:
     build: .
@@ -21,13 +24,20 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+psycopg://ats:ats_password@db:5432/ats_pm
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-production}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ats}:${POSTGRES_PASSWORD:-ats_password}@db:5432/${POSTGRES_DB:-ats_pm}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY in .env}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:8080}
+      CORS_ALLOW_LOCAL_DEV: ${CORS_ALLOW_LOCAL_DEV:-false}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      CACHE_BACKEND: ${CACHE_BACKEND:-memory}
+      QUEUE_BACKEND: ${QUEUE_BACKEND:-inline}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
       - uploads:/code/uploads
     ports:
       - "8000:8000"
+    restart: unless-stopped
 
 volumes:
   pgdata:

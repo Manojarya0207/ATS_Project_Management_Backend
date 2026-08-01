@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    name: Lint & type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Ruff lint
+        run: ruff check app tests scripts
+      - name: Ruff format check
+        run: ruff format --check app tests scripts
+      - name: Mypy
+        run: mypy app
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Pytest
+        run: pytest -q
+
+  migrations:
+    name: Migration check
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ats_pm_ci
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci -d ats_pm_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Upgrade on fresh SQLite
+        run: alembic -x db_url=sqlite:///./ci_check.db upgrade head
+      - name: Upgrade + downgrade on fresh Postgres
+        run: |
+          alembic -x db_url=postgresql+psycopg://ci:ci@localhost:5432/ats_pm_ci upgrade head
+          alembic -x db_url=postgresql+psycopg://ci:ci@localhost:5432/ats_pm_ci downgrade base
+          alembic -x db_url=postgresql+psycopg://ci:ci@localhost:5432/ats_pm_ci upgrade head
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t ats-pm-backend:ci .

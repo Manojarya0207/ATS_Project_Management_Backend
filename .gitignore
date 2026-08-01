@@ -3,4 +3,10 @@ __pycache__/
 *.pyc
 .env
 uploads/
+uploads-test/
 .DS_Store
+*.db
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

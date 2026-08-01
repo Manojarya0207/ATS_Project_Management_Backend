@@ -1,40 +1,114 @@
-from functools import lru_cache
+"""Application configuration.
 
+All configuration comes from environment variables (or a local ``.env`` file in
+development). Nothing is hardcoded; environment-specific behaviour is driven by
+the ``ENVIRONMENT`` variable (development / testing / staging / production).
+
+The ``Settings`` object is constructed once during application startup
+(``app.main.lifespan``) and injected everywhere via ``app.state`` — there is no
+module-level singleton. Scripts and Alembic build their own instance directly.
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+from typing import Self
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_INSECURE_SECRETS = {"", "change-me-in-production", "secret", "changeme"}
+
+
+class Environment(StrEnum):
+    development = "development"
+    testing = "testing"
+    staging = "staging"
+    production = "production"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # App
+    # --- Application ---------------------------------------------------------
     app_name: str = "ATS Project Management API"
     api_v1_prefix: str = "/api/v1"
+    environment: Environment = Environment.development
     debug: bool = False
 
-    # Database
-    database_url: str = "postgresql+psycopg://localhost:5432/ats_pm"
+    # --- Database ------------------------------------------------------------
+    database_url: str = "sqlite+aiosqlite:///./ats_pm.db"
+    database_echo: bool = False
+    database_pool_size: int = 10
+    database_max_overflow: int = 20
 
-    # Auth
+    # --- Auth / security -----------------------------------------------------
     jwt_secret_key: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
+    password_min_length: int = 8
+    password_max_length: int = 128
 
-    # CORS
+    # --- CORS ----------------------------------------------------------------
     cors_origins: str = "http://localhost:3000,http://localhost:8080,http://localhost:5000"
+    cors_allow_local_dev: bool = True  # allow any localhost/127.0.0.1 port via regex
 
-    # Files
+    # --- Rate limiting -------------------------------------------------------
+    rate_limit_enabled: bool = True
+    rate_limit_auth: str = "10/minute"
+
+    # --- File storage --------------------------------------------------------
+    storage_backend: str = "local"  # local | s3 | r2 | azure
     upload_dir: str = "uploads"
     max_upload_size_bytes: int = 25 * 1024 * 1024  # 25 MB
+    # S3 / R2 / Azure settings (used only when the matching backend is active)
+    s3_bucket: str = ""
+    s3_region: str = ""
+    s3_endpoint_url: str = ""  # set for Cloudflare R2 / MinIO
+    azure_container: str = ""
+    azure_connection_string: str = ""
 
-    # Rate limiting
-    rate_limit_auth: str = "10/minute"
+    # --- Cache ---------------------------------------------------------------
+    cache_backend: str = "memory"  # memory | redis | none
+    redis_url: str = "redis://localhost:6379/0"
+
+    # --- Queue ---------------------------------------------------------------
+    queue_backend: str = "inline"  # inline | celery
+
+    # --- Logging -------------------------------------------------------------
+    log_level: str = "INFO"
+    log_json: bool | None = None  # default: JSON in staging/production, console otherwise
+
+    # --- Migrations ----------------------------------------------------------
+    run_migrations_on_startup: bool = True
 
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
+    @property
+    def is_production_like(self) -> bool:
+        return self.environment in (Environment.staging, Environment.production)
 
-@lru_cache
-def get_settings() -> Settings:
-    return Settings()
+    @property
+    def log_json_enabled(self) -> bool:
+        return self.log_json if self.log_json is not None else self.is_production_like
+
+    @property
+    def sync_database_url(self) -> str:
+        """URL with a sync driver, for tools that need a sync engine (Alembic CLI)."""
+        return self.database_url.replace("+aiosqlite", "").replace("+asyncpg", "+psycopg")
+
+    @model_validator(mode="after")
+    def _validate_production_hardening(self) -> Self:
+        if self.environment == Environment.production:
+            if self.jwt_secret_key in _INSECURE_SECRETS or len(self.jwt_secret_key) < 32:
+                raise ValueError(
+                    "JWT_SECRET_KEY must be set to a strong value (>=32 chars) in production"
+                )
+            if self.database_url.startswith("sqlite"):
+                raise ValueError("SQLite is not supported in production; set DATABASE_URL")
+            if self.debug:
+                raise ValueError("DEBUG must be disabled in production")
+        return self

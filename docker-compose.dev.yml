@@ -1,0 +1,44 @@
+# Development compose: source bind-mounted with auto-reload, Postgres exposed
+# on localhost:5432 for local tooling.
+#
+#   docker compose -f docker-compose.dev.yml up
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ats_pm
+      POSTGRES_USER: ats
+      POSTGRES_PASSWORD: ats_password
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ats -d ats_pm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: development
+      DEBUG: "true"
+      DATABASE_URL: postgresql+asyncpg://ats:ats_password@db:5432/ats_pm
+      JWT_SECRET_KEY: dev-only-secret-key-not-for-production-use
+      LOG_LEVEL: DEBUG
+    volumes:
+      - ./app:/code/app
+      - ./alembic:/code/alembic
+      - uploads_dev:/code/uploads
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  pgdata_dev:
+  uploads_dev:
