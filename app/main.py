@@ -59,35 +59,37 @@ def _run_alembic_upgrade() -> None:
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     setup_logging(settings)
-    ratelimit.configure(settings)
 
-    if settings.run_migrations_on_startup:
-        logger.info("Running database migrations")
-        try:
+    try:
+        ratelimit.configure(settings)
+
+        if settings.run_migrations_on_startup:
+            logger.info("Running database migrations")
             await anyio.to_thread.run_sync(_run_alembic_upgrade)
-        except BaseException as e:
-            logger.error("Database migration failed: %s", e, exc_info=True)
-            raise
 
-    engine, sessionmaker = build_engine(settings)
-    app.state.engine = engine
-    app.state.sessionmaker = sessionmaker
-    app.state.storage = get_storage(settings)
-    app.state.cache = get_cache(settings)
-    app.state.queue = get_queue(settings)
+        engine, sessionmaker = build_engine(settings)
+        app.state.engine = engine
+        app.state.sessionmaker = sessionmaker
+        app.state.storage = get_storage(settings)
+        app.state.cache = get_cache(settings)
+        app.state.queue = get_queue(settings)
 
-    event_bus = EventBus()
-    notification_handlers.register(event_bus)
-    app.state.event_bus = event_bus
+        event_bus = EventBus()
+        notification_handlers.register(event_bus)
+        app.state.event_bus = event_bus
 
-    logger.info(
-        "%s started (env=%s, storage=%s, cache=%s, queue=%s)",
-        settings.app_name,
-        settings.environment.value,
-        settings.storage_backend,
-        settings.cache_backend,
-        settings.queue_backend,
-    )
+        logger.info(
+            "%s started (env=%s, storage=%s, cache=%s, queue=%s)",
+            settings.app_name,
+            settings.environment.value,
+            settings.storage_backend,
+            settings.cache_backend,
+            settings.queue_backend,
+        )
+    except BaseException as e:
+        logger.error("Lifespan startup failed: %s", e, exc_info=True)
+        raise
+
     yield
 
     await app.state.cache.close()
