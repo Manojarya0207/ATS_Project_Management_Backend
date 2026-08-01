@@ -101,7 +101,16 @@ class Settings(BaseSettings):
         return self.database_url.replace("+aiosqlite", "").replace("+asyncpg", "+psycopg")
 
     @model_validator(mode="after")
-    def _validate_production_hardening(self) -> Self:
+    def _normalize_and_validate(self) -> Self:
+        # Normalize database_url to use postgresql+asyncpg for PostgreSQL connections
+        url = self.database_url
+        if url.startswith("postgres://") or url.startswith("postgresql://"):
+            if not url.startswith("postgresql+asyncpg://") and not url.startswith("postgres+asyncpg://"):
+                if url.startswith("postgres://"):
+                    self.database_url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+                else:
+                    self.database_url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
         if self.environment == Environment.production:
             if self.jwt_secret_key in _INSECURE_SECRETS or len(self.jwt_secret_key) < 32:
                 raise ValueError(
