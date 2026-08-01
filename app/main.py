@@ -9,6 +9,7 @@ level, so tests and scripts can build isolated app instances.
 from __future__ import annotations
 
 import logging
+import traceback
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -66,6 +67,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if settings.run_migrations_on_startup:
             logger.info("Running database migrations")
             await anyio.to_thread.run_sync(_run_alembic_upgrade)
+            # Alembic's env.py fileConfig() replaces the root handlers with its
+            # own (stderr, plain format) — restore our structured logging.
+            setup_logging(settings)
+            logger.info("Database migrations complete")
 
         engine, sessionmaker = build_engine(settings)
         app.state.engine = engine
@@ -87,6 +92,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             settings.queue_backend,
         )
     except BaseException as e:
+        # Write directly to stderr as well — if the failure happened inside
+        # Alembic, fileConfig() may have broken/disabled our logging config,
+        # and uvicorn would exit with status 3 without ever showing the error.
+        traceback.print_exc()
         logger.error("Lifespan startup failed: %s", e, exc_info=True)
         raise
 

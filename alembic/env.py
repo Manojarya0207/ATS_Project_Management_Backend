@@ -21,8 +21,11 @@ from app.core.database import Base
 
 config = context.config
 
+# ``disable_existing_loggers=False`` is critical: when migrations run inside the
+# application lifespan, the default (True) silently disables the ``app`` and
+# ``uvicorn.error`` loggers, hiding any startup/migration failure from the logs.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 
