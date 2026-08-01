@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("Running database migrations")
         try:
             await anyio.to_thread.run_sync(_run_alembic_upgrade)
-        except Exception as e:
+        except BaseException as e:
             logger.error("Database migration failed: %s", e, exc_info=True)
             raise
 
